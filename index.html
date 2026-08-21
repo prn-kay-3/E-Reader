@@ -90,14 +90,15 @@
   #page-wrap{ flex:1; overflow:hidden; position:relative; }
   #page{
     position:absolute; top:0; left:0; height:100%; box-sizing:border-box;
-    padding: 64px 48px 60px;
+    padding: 64px 0 60px;
     font-family: var(--serif); font-size: 18px; line-height: 1.85; color: var(--ink);
-    column-width: 640px; column-gap: 96px;
+    column-fill: auto;
     transition: transform .22s ease;
   }
-  #page h1, #page h2, #page h3{ font-style:italic; font-weight:600; line-height:1.3; margin: 1.4em 0 0.6em; color:#f1eee2; }
+  #page h1, #page h2, #page h3{ font-style:italic; font-weight:600; line-height:1.3; margin: 1.4em 0 0.6em; color:#f1eee2; break-after:avoid; }
   #page p{ margin: 0 0 1.1em; }
-  #page img{ max-width:100%; height:auto; display:block; margin: 1.5em auto; border-radius:2px; }
+  #page img, #page svg{ max-width:100%; max-height: calc(100% - 8px); width:auto; height:auto; display:block; margin: 1.5em auto; border-radius:2px; object-fit:contain; break-inside:avoid; }
+  #page table, #page pre, #page blockquote{ break-inside:avoid; }
   #page a{ color: var(--ember); }
   #page table{ border-collapse:collapse; margin:1.2em 0; width:100%; }
   #page td, #page th{ border:1px solid var(--line); padding:6px 10px; font-size:0.9em; }
@@ -888,16 +889,31 @@ async function renderChapter(){
   if(el('toc-panel').classList.contains('open')) renderToc();
 }
 
+/* Horizontal reading margin. CSS multi-column padding only ever appears
+   before the first column and after the last one — not on every page — so
+   side margins can't come from box padding alone. Instead: each column is
+   sized to (page width - 2*margin), and column-gap is set to 2*margin, so
+   one full "column + gap" cycle is exactly one page width wide. That keeps
+   the page-turn step (translateX by page width) perfectly aligned with
+   where the browser actually breaks columns, on every page, at any font
+   size or screen size. */
+function pageMargin(w){
+  return Math.max(20, Math.min(64, Math.round(w * 0.07)));
+}
+
 function layoutPages(){
   const wrap = el('page-wrap');
   const pageEl = el('page');
   const w = wrap.clientWidth;
   const h = wrap.clientHeight;
+  const margin = pageMargin(w);
 
   pageEl.style.width = w + 'px';
   pageEl.style.height = h + 'px';
-  pageEl.style.columnWidth = w + 'px';
-  pageEl.style.columnGap = '0px';
+  pageEl.style.paddingLeft = margin + 'px';
+  pageEl.style.paddingRight = margin + 'px';
+  pageEl.style.columnWidth = Math.max(1, w - margin * 2) + 'px';
+  pageEl.style.columnGap = (margin * 2) + 'px';
 
   const totalWidth = pageEl.scrollWidth;
   pagesInChapter = Math.max(1, Math.round(totalWidth / w));
@@ -911,11 +927,10 @@ function layoutPages(){
 
 function goToPageInChapter(pageIndex, skipUpdate){
   const wrap = el('page-wrap');
-  const pageEl = el('page');
   const w = wrap.clientWidth;
   pageIndex = Math.max(0, Math.min(pagesInChapter - 1, pageIndex));
   currentPageInChapter = pageIndex;
-  pageEl.style.transform = `translateX(${-pageIndex * w}px)`;
+  el('page').style.transform = `translateX(${-pageIndex * w}px)`;
   el('page-position').textContent = `Page ${pageIndex+1} of ${pagesInChapter}`;
 
   if(!skipUpdate && currentBook){
