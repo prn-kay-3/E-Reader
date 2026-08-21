@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📖 eReader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #14140f;
+    --bg-raised: #1c1c16;
+    --bg-hover: #24241c;
+    --ink: #e8e4d8;
+    --ink-dim: #948e7c;
+    --ink-faint: #5c5748;
+    --ember: #c98a4b;
+    --ember-dim: #7a5730;
+    --line: #2c2b23;
+    --danger: #d97757;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --sans: 'Inter', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{ background: var(--bg); color: var(--ink); font-family: var(--sans); height:100%; overflow:hidden; }
+  #app{ height:100vh; display:flex; flex-direction:column; }
+
+  #topbar{ display:flex; align-items:center; justify-content:space-between; padding: 18px 28px; border-bottom: 1px solid var(--line); flex-shrink:0; }
+  #brand{ display:flex; align-items:center; gap:10px; }
+  #brand .mark{ width:20px; height:20px; position:relative; flex-shrink:0; }
+  #brand .mark svg{ width:100%; height:100%; display:block; }
+  #brand span{ font-family: var(--serif); font-size:19px; letter-spacing:0.02em; font-style:italic; }
+  #topbar .actions{ display:flex; align-items:center; gap:10px; }
+  button{ font-family: var(--sans); font-size:13px; color:var(--ink); background:transparent; border:1px solid var(--line); padding:8px 14px; border-radius:3px; cursor:pointer; letter-spacing:0.02em; transition: border-color .15s, background .15s; }
+  button:hover{ border-color:var(--ink-faint); background:var(--bg-hover); }
+  button.primary{ border-color:var(--ember-dim); color:var(--ember); }
+  button.primary:hover{ background: rgba(201,138,75,0.08); border-color:var(--ember); }
+  button.icon{ padding:8px 10px; }
+  input[type=file]{ display:none; }
+
+  #library{ flex:1; overflow-y:auto; padding: 36px 28px 60px; }
+  #library-inner{ max-width: 980px; margin:0 auto; }
+  #lib-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:28px; gap:12px; flex-wrap:wrap; }
+  #lib-head h1{ font-family:var(--sans); font-weight:500; font-size:13px; letter-spacing:0.14em; text-transform:uppercase; color:var(--ink-dim); }
+  #lib-head-right{ display:flex; align-items:center; gap:10px; }
+  #lib-count{ font-size:12px; color:var(--ink-faint); margin-left:4px; }
+  #reload-btn, #export-btn, #import-btn{ font-size:11px; padding:6px 10px; }
+
+  .lib-notice{ border:1px solid var(--ember-dim); background: rgba(201,138,75,0.07); color: var(--ink); font-size:12.5px; line-height:1.6; padding: 12px 16px; border-radius:4px; margin-bottom:20px; cursor:pointer; display:none; }
+  .lib-notice b{ color: var(--ember); }
+  .lib-notice code{ color:var(--ink); background:rgba(255,255,255,0.06); padding:1px 5px; border-radius:3px; }
+  .lib-notice .dismiss-hint{ color: var(--ink-faint); font-size:11px; display:block; margin-top:4px; }
+
+  #dropzone{ border: 1px dashed var(--line); border-radius: 4px; padding: 48px 24px; text-align:center; color: var(--ink-faint); font-size:13px; margin-bottom: 36px; transition: border-color .15s, color .15s; cursor:pointer; }
+  #dropzone.drag{ border-color: var(--ember); color: var(--ember); }
+  #dropzone .dz-title{ font-family:var(--serif); font-style:italic; font-size:17px; color:var(--ink-dim); margin-bottom:6px; }
+  #dropzone.drag .dz-title{ color: var(--ember); }
+
+  #grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 28px 22px; }
+  .book-card{ cursor:pointer; }
+  .cover{ width:100%; aspect-ratio: 2/3; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 2px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; transition: border-color .15s, transform .15s; }
+  .book-card:hover .cover{ border-color: var(--ink-faint); transform: translateY(-2px); }
+  .cover img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .cover .fallback{ font-family: var(--serif); font-style:italic; font-size:13px; color: var(--ink-dim); text-align:center; padding:14px; line-height:1.4; }
+  .progress-pip{ position:absolute; bottom:0; left:0; right:0; height:2px; background: rgba(255,255,255,0.06); }
+  .progress-pip i{ display:block; height:100%; background: var(--ember); }
+  .resume-badge{ position:absolute; bottom:6px; left:6px; right:6px; background:rgba(0,0,0,.72); color:#e9d9c4; font-family:var(--sans); font-size:10.5px; padding:3px 6px; border-radius:4px; text-align:center; }
+  .book-title{ font-family: var(--serif); font-size:14px; margin-top:10px; line-height:1.3; color: var(--ink); }
+  .book-author{ font-size:11px; color: var(--ink-faint); margin-top:2px; }
+
+  #empty-state{ text-align:center; padding: 60px 20px; color: var(--ink-faint); }
+  #empty-state .es-title{ font-family:var(--serif); font-style:italic; font-size:20px; color:var(--ink-dim); margin-bottom:8px; }
+  #empty-state p{ font-size:13px; max-width:360px; margin:0 auto; line-height:1.6; }
+
+  #reader{ flex:1; display:none; flex-direction:column; overflow:hidden; position:relative; }
+  #reader.active{ display:flex; }
+  #reader-bar{ display:flex; align-items:center; justify-content:space-between; padding: 14px 24px; border-bottom:1px solid var(--line); flex-shrink:0; }
+  #reader-bar .left{ display:flex; align-items:center; gap:10px; min-width:0; }
+  #reader-title{ font-family:var(--serif); font-style:italic; font-size:14px; color:var(--ink-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 300px; }
+  #reader-bar .right{ display:flex; align-items:center; gap:10px; }
+  #page-position{ font-family:var(--sans); font-size:12px; color:var(--ink-faint); white-space:nowrap; }
+  #bookmark-btn{ display:inline-flex; align-items:center; gap:4px; font-size:12.5px; }
+  #bookmark-btn.active{ color:var(--ember); border-color:var(--ember-dim); }
+
+  #font-controls{ display:flex; align-items:center; gap:2px; border:1px solid var(--line); border-radius:3px; }
+  #font-controls button{ border:none; padding:7px 10px; }
+  #font-controls span{ font-size:11px; padding:0 6px; color:var(--ink-faint); }
+
+  #page-wrap{ flex:1; overflow:hidden; position:relative; }
+  #page{
+    position:absolute; top:0; left:0; height:100%; box-sizing:border-box;
+    padding: 64px 48px 60px;
+    font-family: var(--serif); font-size: 18px; line-height: 1.85; color: var(--ink);
+    column-width: 640px; column-gap: 96px;
+    transition: transform .22s ease;
+  }
+  #page h1, #page h2, #page h3{ font-style:italic; font-weight:600; line-height:1.3; margin: 1.4em 0 0.6em; color:#f1eee2; }
+  #page p{ margin: 0 0 1.1em; }
+  #page img{ max-width:100%; height:auto; display:block; margin: 1.5em auto; border-radius:2px; }
+  #page a{ color: var(--ember); }
+  #page table{ border-collapse:collapse; margin:1.2em 0; width:100%; }
+  #page td, #page th{ border:1px solid var(--line); padding:6px 10px; font-size:0.9em; }
+  #page::selection, #page *::selection{ background: rgba(201,138,75,0.28); }
+
+  .page-tap-zone{ position:absolute; top:0; bottom:0; width:28%; z-index:5; cursor:pointer; background:transparent; }
+  .page-tap-zone.left{ left:0; }
+  .page-tap-zone.right{ right:0; }
+
+  #reader-footer{ flex-shrink:0; padding: 12px 24px; border-top:1px solid var(--line); display:flex; align-items:center; gap:16px; }
+  #chapter-progress{ flex:1; height:2px; background: var(--line); position:relative; cursor:pointer; border-radius:2px; }
+  #chapter-progress i{ position:absolute; left:0; top:0; bottom:0; background: var(--ember); border-radius:2px; }
+  #footer-label{ font-size:11px; color: var(--ink-faint); white-space:nowrap; min-width:80px; text-align:right; }
+
+  #loading-msg{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background: var(--bg-raised); border:1px solid var(--line); padding:9px 16px; border-radius:3px; font-size:12px; color:var(--ink-dim); display:none; z-index:50; }
+  #loading-msg.show{ display:block; }
+
+  #toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(12px); background: var(--bg-raised); color:var(--ink); border:1px solid var(--line); font-size:13px; padding:9px 16px; border-radius:6px; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; z-index:200; }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #toc-overlay{ position:absolute; inset:0; background:rgba(0,0,0,0.45); opacity:0; pointer-events:none; transition:opacity .18s; z-index:40; }
+  #toc-overlay.open{ opacity:1; pointer-events:auto; }
+  #toc-panel{ position:absolute; top:0; bottom:0; left:0; width:300px; max-width:82vw; background: var(--bg-raised); border-right:1px solid var(--line); transform: translateX(-100%); transition: transform .2s ease; z-index:41; display:flex; flex-direction:column; }
+  #toc-panel.open{ transform: translateX(0); }
+  #toc-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--line); flex-shrink:0; }
+  #toc-header span{ font-family:var(--serif); font-style:italic; font-size:15px; color:var(--ink-dim); }
+  #toc-list{ flex:1; overflow-y:auto; padding: 10px 0; }
+  .toc-item{ padding: 9px 18px; font-size:13px; color: var(--ink-dim); cursor:pointer; line-height:1.4; border-left:2px solid transparent; transition: background .12s, color .12s; }
+  .toc-item:hover{ background: var(--bg-hover); color: var(--ink); }
+  .toc-item.active{ color: var(--ember); border-left-color: var(--ember); background: rgba(201,138,75,0.06); }
+
+  ::-webkit-scrollbar{ width:9px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background: var(--line); border-radius:5px; }
+  ::-webkit-scrollbar-thumb:hover{ background: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div id="brand">
+      <div class="mark">
+        <svg viewBox="0 0 20 20" fill="none">
+          <path d="M2 3.5C2 3.5 5 2 10 3.5V17C5 15.5 2 17 2 17V3.5Z" stroke="#c98a4b" stroke-width="1.1" stroke-linejoin="round"/>
+          <path d="M18 3.5C18 3.5 15 2 10 3.5V17C15 15.5 18 17 18 17V3.5Z" stroke="#c98a4b" stroke-width="1.1" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span>📖 eReader</span>
+    </div>
+    <div class="actions">
+      <button class="icon" id="back-btn" style="display:none;" title="Back to library">&larr; Library</button>
+      <button class="primary" id="add-btn">Add books</button>
+      <input type="file" id="file-input" accept=".epub" multiple>
+    </div>
+  </div>
+
+  <div id="library">
+    <div id="library-inner">
+      <div id="lib-head">
+        <h1>Your library</h1>
+        <div id="lib-head-right">
+          <button class="icon" id="reload-btn" title="Re-check Files/Books.json">&#8635; Reload</button>
+          <button class="icon" id="export-btn" title="Download Books.json with current bookmarks">&#8681; Export Books.json</button>
+          <button class="icon" id="import-btn" title="Load a Books.json to restore bookmarks">&#8682; Import Books.json</button>
+          <input type="file" id="import-file-input" accept="application/json,.json">
+          <span id="lib-count"></span>
+        </div>
+      </div>
+      <div class="lib-notice" id="lib-notice" title="Click to dismiss"></div>
+      <div id="dropzone">
+        <div class="dz-title">Drop .epub files here</div>
+        <div>or click to browse your Files folder</div>
+      </div>
+      <div id="grid"></div>
+      <div id="empty-state" style="display:none;">
+        <div class="es-title">Nothing on the shelf yet</div>
+        <p>Add .epub files from your computer to start reading. Nothing is uploaded anywhere — books are parsed and kept right here in this session.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="reader">
+    <div id="toc-overlay"></div>
+    <div id="toc-panel">
+      <div id="toc-header">
+        <span>Contents</span>
+        <button class="icon" id="toc-close" title="Close">&times;</button>
+      </div>
+      <div id="toc-list"></div>
+    </div>
+    <div id="reader-bar">
+      <div class="left">
+        <button class="icon" id="reader-back" title="Back to library">&larr;</button>
+        <button class="icon" id="toc-btn" title="Contents">&#9776;</button>
+        <span id="reader-title"></span>
+      </div>
+      <div class="right">
+        <span id="page-position"></span>
+        <button class="icon" id="bookmark-btn" title="Save your place here">&#9733; Bookmark</button>
+        <div id="font-controls">
+          <button id="font-dec" title="Smaller text">A&minus;</button>
+          <span id="font-size-label">18</span>
+          <button id="font-inc" title="Larger text">A+</button>
+        </div>
+      </div>
+    </div>
+    <div id="page-wrap">
+      <div class="page-tap-zone left" id="tap-prev" title="Previous page"></div>
+      <div class="page-tap-zone right" id="tap-next" title="Next page"></div>
+      <div id="page"></div>
+    </div>
+    <div id="reader-footer">
+      <button class="icon" id="prev-chapter" title="Previous">&larr;</button>
+      <div id="chapter-progress"><i id="chapter-progress-fill"></i></div>
+      <button class="icon" id="next-chapter" title="Next">&rarr;</button>
+      <span id="footer-label"></span>
+    </div>
+  </div>
+
+</div>
+<div id="loading-msg"></div>
+<div id="toast"></div>
+<style id="chapter-css"></style>
+
+<script>
+const library = [];
+let currentBook = null;
+let currentChapterIndex = 0;
+let currentPageInChapter = 0;
+let pagesInChapter = 1;
+let fontSize = 18;
+
+const el = id => document.getElementById(id);
+const grid = el('grid');
+const dropzone = el('dropzone');
+const fileInput = el('file-input');
+const libraryView = el('library');
+const readerView = el('reader');
+const loadingMsg = el('loading-msg');
+const chapterCssTag = el('chapter-css');
+
+function showLoading(text){ loadingMsg.textContent = text; loadingMsg.classList.add('show'); }
+function hideLoading(){ loadingMsg.classList.remove('show'); }
+
+function showLibraryNotice(html){
+  const n = el('lib-notice');
+  n.innerHTML = html + '<span class="dismiss-hint">Click to dismiss</span>';
+  n.style.display = 'block';
+}
+el('lib-notice').addEventListener('click', ()=>{ el('lib-notice').style.display = 'none'; });
+
+function showToast(text){
+  const t = el('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---------- bookmark storage ----------
+   Bookmarks live in localStorage as the working copy, keyed by the book's
+   source filename. Books.json (fetched from Files/) can seed initial
+   bookmarks, and Export/Import round-trip the whole set as a JSON file so
+   bookmarks can be committed back into the repo or moved between devices. */
+
+const BOOKMARK_KEY = 'ereader-bookmarks-v1';
+
+function loadBookmarksStore(){
+  try{ return JSON.parse(localStorage.getItem(BOOKMARK_KEY) || '{}'); }
+  catch(e){ return {}; }
+}
+function saveBookmarksStore(store){
+  try{ localStorage.setItem(BOOKMARK_KEY, JSON.stringify(store)); }
+  catch(e){ console.error('failed to save bookmarks', e); }
+}
+function getBookmark(fileKey){
+  if(!fileKey) return null;
+  return loadBookmarksStore()[fileKey] || null;
+}
+function setBookmarkForKey(fileKey, bookmark){
+  if(!fileKey) return;
+  const store = loadBookmarksStore();
+  store[fileKey] = bookmark;
+  saveBookmarksStore(store);
+}
+
+function currentChapterTitle(){
+  if(currentBook && currentBook.toc){
+    const match = currentBook.toc.find(e => findSpineIndex(e.pathNoFrag) === currentChapterIndex);
+    if(match) return match.title;
+  }
+  return `Chapter ${currentChapterIndex + 1}`;
+}
+
+/* whole-book page estimate, using known per-chapter page counts and the
+   average of chapters visited so far for any not yet measured */
+function estimateGlobalPage(){
+  const counts = currentBook.chapterPageCounts;
+  const known = counts.filter(c => c != null);
+  const avg = known.length ? known.reduce((a,b)=>a+b,0) / known.length : pagesInChapter;
+  let cumulative = 0;
+  for(let i = 0; i < currentChapterIndex; i++){
+    cumulative += (counts[i] != null) ? counts[i] : avg;
+  }
+  return Math.round(cumulative) + currentPageInChapter + 1;
+}
+
+function saveCurrentBookmark(){
+  if(!currentBook) return;
+  const key = currentBook.sourceFile;
+  const bookmark = {
+    chapterIndex: currentChapterIndex,
+    pageIndexInChapter: currentPageInChapter,
+    pagesInChapter,
+    chapterTitle: currentChapterTitle(),
+    page: estimateGlobalPage(),
+    savedAt: new Date().toISOString()
+  };
+  currentBook.bookmark = bookmark;
+  setBookmarkForKey(key, bookmark);
+  el('bookmark-btn').classList.add('active');
+  showToast(`Bookmarked — ${bookmark.chapterTitle}, page ${bookmark.page}`);
+}
+
+/* ---------- import / export Books.json ---------- */
+
+function exportBooksJson(){
+  const store = loadBookmarksStore();
+  const manifest = library.map(book=>{
+    const entry = { file: book.sourceFile };
+    const bm = store[book.sourceFile] || book.bookmark;
+    if(bm) entry.bookmark = bm;
+    return entry;
+  });
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Books.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  showToast('Books.json downloaded — commit it into Files/ to keep bookmarks in sync');
+}
+
+function importBooksJson(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try{ data = JSON.parse(reader.result); }
+    catch(err){ showLibraryNotice(`<b>That file isn't valid JSON:</b><br>${err.message}`); return; }
+    if(!Array.isArray(data)){ showLibraryNotice(`<b>Books.json must be a JSON array.</b>`); return; }
+
+    const store = loadBookmarksStore();
+    let updated = 0;
+    data.forEach(item=>{
+      const entry = typeof item === 'string' ? { file: item } : item;
+      if(!entry || !entry.file) return;
+      if(entry.bookmark){
+        store[entry.file] = entry.bookmark;
+        updated++;
+      }
+      const match = library.find(b => b.sourceFile === entry.file);
+      if(match && entry.bookmark) match.bookmark = entry.bookmark;
+    });
+    saveBookmarksStore(store);
+    renderLibrary();
+    showLibraryNotice(`<b>Imported ${updated} bookmark${updated===1?'':'s'} from Books.json.</b>`);
+  };
+  reader.onerror = () => showLibraryNotice(`<b>Couldn't read that file.</b>`);
+  reader.readAsText(file);
+}
+
+/* ---------- path + blob helpers ---------- */
+
+function resolvePath(base, rel){
+  if(!rel) return base;
+  if(/^[a-z]+:/i.test(rel)) return rel;
+  if(rel.startsWith('/')) return rel.slice(1);
+  const baseParts = base.split('/').slice(0, -1);
+  const relParts = rel.split('/');
+  for(const part of relParts){
+    if(part === '.' || part === '') continue;
+    if(part === '..') baseParts.pop();
+    else baseParts.push(part);
+  }
+  return baseParts.join('/');
+}
+
+const MIME_TYPES = {
+  png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif',
+  svg:'image/svg+xml', webp:'image/webp', bmp:'image/bmp',
+  css:'text/css',
+  ttf:'font/ttf', otf:'font/otf', woff:'font/woff', woff2:'font/woff2',
+  mp3:'audio/mpeg', mp4:'video/mp4', ogg:'audio/ogg', m4a:'audio/mp4'
+};
+function mimeFor(path){
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+async function zipFileToBlobUrl(book, path){
+  if(book.blobCache[path]) return book.blobCache[path];
+  const decoded = decodeURIComponent(path);
+  const file = book.zip.file(path) || book.zip.file(decoded);
+  if(!file) return null;
+  const data = await file.async('uint8array');
+  const blob = new Blob([data], { type: mimeFor(path) });
+  const url = URL.createObjectURL(blob);
+  book.blobCache[path] = url;
+  return url;
+}
+
+async function resolveCssUrls(cssText, cssPath, book){
+  const urlRegex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+  const seen = new Set();
+  const matches = [...cssText.matchAll(urlRegex)];
+  for(const m of matches){
+    const full = m[0];
+    const rawUrl = m[2];
+    if(seen.has(full)) continue;
+    seen.add(full);
+    if(/^(data:|https?:|blob:)/i.test(rawUrl)) continue;
+    const resolved = resolvePath(cssPath, rawUrl.split('#')[0]);
+    const blobUrl = await zipFileToBlobUrl(book, resolved);
+    if(blobUrl) cssText = cssText.split(full).join(`url("${blobUrl}")`);
+  }
+  return cssText;
+}
+
+async function buildChapterCss(doc, chapterPath, book){
+  let combined = '';
+  const head = doc.querySelector('head') || doc;
+  const links = head.querySelectorAll('link[rel="stylesheet"], link[type="text/css"]');
+  for(const link of links){
+    const href = link.getAttribute('href');
+    if(!href) continue;
+    const cssPath = resolvePath(chapterPath, href);
+    const file = book.zip.file(cssPath) || book.zip.file(decodeURIComponent(cssPath));
+    if(!file) continue;
+    let cssText = await file.async('text');
+    cssText = await resolveCssUrls(cssText, cssPath, book);
+    combined += `\n/* ${href} */\n` + cssText;
+  }
+  const styleEls = head.querySelectorAll('style');
+  for(const styleEl of styleEls){
+    let cssText = styleEl.textContent || '';
+    cssText = await resolveCssUrls(cssText, chapterPath, book);
+    combined += '\n' + cssText;
+  }
+  return combined.trim();
+}
+
+/* ---------- TOC extraction ---------- */
+
+function parseNavList(olEl, basePath, level, out){
+  for(const li of Array.from(olEl.children)){
+    if(li.tagName.toLowerCase() !== 'li') continue;
+    const a = li.querySelector(':scope > a, :scope > span');
+    if(a){
+      const title = a.textContent.trim().replace(/\s+/g,' ');
+      const href = a.getAttribute('href');
+      const [pathPart, fragment] = href ? href.split('#') : [null, null];
+      out.push({ title: title || '(untitled)', pathNoFrag: pathPart ? resolvePath(basePath, pathPart) : null, fragment: fragment || null, level });
+    }
+    const subOl = li.querySelector(':scope > ol');
+    if(subOl) parseNavList(subOl, basePath, level+1, out);
+  }
+}
+
+function parseNcxList(navPoints, basePath, level, out){
+  for(const np of Array.from(navPoints)){
+    if(np.tagName.toLowerCase() !== 'navpoint') continue;
+    const labelText = np.querySelector(':scope > navlabel > text');
+    const content = np.querySelector(':scope > content');
+    const href = content ? content.getAttribute('src') : null;
+    const [pathPart, fragment] = href ? href.split('#') : [null, null];
+    out.push({ title: labelText ? labelText.textContent.trim() : '(untitled)', pathNoFrag: pathPart ? resolvePath(basePath, pathPart) : null, fragment: fragment || null, level });
+    const children = np.querySelectorAll(':scope > navpoint');
+    if(children.length) parseNcxList(children, basePath, level+1, out);
+  }
+}
+
+async function extractToc(zip, opfPath, manifestItems){
+  const navItem = Object.values(manifestItems).find(i => (i.properties||'').split(/\s+/).includes('nav'));
+  if(navItem){
+    const navPath = resolvePath(opfPath, navItem.href);
+    const navFile = zip.file(navPath) || zip.file(decodeURIComponent(navPath));
+    if(navFile){
+      try{
+        const navText = await navFile.async('text');
+        let navDoc = new DOMParser().parseFromString(navText, 'application/xhtml+xml');
+        if(navDoc.querySelector('parsererror')) navDoc = new DOMParser().parseFromString(navText, 'text/html');
+        const tocNav = Array.from(navDoc.querySelectorAll('nav')).find(n =>
+          (n.getAttribute('epub:type')||'').includes('toc') || (n.getAttribute('type')||'').includes('toc')
+        ) || navDoc.querySelector('nav');
+        const ol = tocNav ? tocNav.querySelector('ol') : navDoc.querySelector('ol');
+        if(ol){
+          const out = [];
+          parseNavList(ol, navPath, 0, out);
+          if(out.length) return out;
+        }
+      }catch(e){ console.error('nav parse failed', e); }
+    }
+  }
+  const ncxItem = Object.values(manifestItems).find(i => (i.mediaType||'').includes('ncx'));
+  if(ncxItem){
+    const ncxPath = resolvePath(opfPath, ncxItem.href);
+    const ncxFile = zip.file(ncxPath) || zip.file(decodeURIComponent(ncxPath));
+    if(ncxFile){
+      try{
+        const ncxText = await ncxFile.async('text');
+        const ncxDoc = new DOMParser().parseFromString(ncxText, 'application/xml');
+        const navMap = ncxDoc.querySelector('navMap');
+        if(navMap){
+          const out = [];
+          parseNcxList(navMap.querySelectorAll(':scope > navPoint'), ncxPath, 0, out);
+          if(out.length) return out;
+        }
+      }catch(e){ console.error('ncx parse failed', e); }
+    }
+  }
+  return null;
+}
+
+/* ---------- cover extraction (with fallbacks) ---------- */
+
+async function extractCover(zip, opfPath, opfDoc, manifestItems, chapters){
+  let coverItem = null;
+  const coverMeta = opfDoc.querySelector('metadata meta[name="cover"]');
+  const coverId = coverMeta?.getAttribute('content');
+  if(coverId && manifestItems[coverId] && manifestItems[coverId].mediaType.startsWith('image')){
+    coverItem = manifestItems[coverId];
+  }
+  if(!coverItem){
+    coverItem = Object.values(manifestItems).find(i => (i.properties||'').split(/\s+/).includes('cover-image'));
+  }
+  if(!coverItem){
+    coverItem = Object.values(manifestItems).find(i => i.mediaType.startsWith('image') && /cover/i.test(i.href));
+  }
+  if(!coverItem && chapters && chapters.length){
+    try{
+      const firstFile = zip.file(chapters[0]) || zip.file(decodeURIComponent(chapters[0]));
+      if(firstFile){
+        const text = await firstFile.async('text');
+        let doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
+        if(doc.querySelector('parsererror')) doc = new DOMParser().parseFromString(text, 'text/html');
+        const img = doc.querySelector('img, image');
+        if(img){
+          const src = img.getAttribute('src') || img.getAttribute('xlink:href') || img.getAttribute('href');
+          if(src){
+            const imgPath = resolvePath(chapters[0], src);
+            const file = zip.file(imgPath) || zip.file(decodeURIComponent(imgPath));
+            if(file){
+              const data = await file.async('uint8array');
+              return URL.createObjectURL(new Blob([data], { type: mimeFor(imgPath) }));
+            }
+          }
+        }
+      }
+    }catch(e){ /* best effort */ }
+  }
+  if(!coverItem){
+    coverItem = Object.values(manifestItems).find(i => i.mediaType.startsWith('image'));
+  }
+  if(coverItem){
+    const coverPath = resolvePath(opfPath, coverItem.href);
+    const coverFile = zip.file(coverPath) || zip.file(decodeURIComponent(coverPath));
+    if(coverFile){
+      const data = await coverFile.async('uint8array');
+      return URL.createObjectURL(new Blob([data], { type: mimeFor(coverPath) }));
+    }
+  }
+  return null;
+}
+
+/* ---------- EPUB parsing ---------- */
+
+async function parseEpub(fileOrBlob, fallbackName, sourceFile){
+  const zip = await JSZip.loadAsync(fileOrBlob);
+  const containerFile = zip.file('META-INF/container.xml');
+  if(!containerFile) throw new Error('Not a valid EPUB (missing container.xml)');
+  const containerXml = await containerFile.async('text');
+  const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
+  const opfPath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+  const opfFile = zip.file(opfPath);
+  if(!opfFile) throw new Error('Not a valid EPUB (missing OPF)');
+  const opfText = await opfFile.async('text');
+  const opfDoc = new DOMParser().parseFromString(opfText, 'application/xml');
+
+  const nameForFallback = (fileOrBlob && fileOrBlob.name) ? fileOrBlob.name : (fallbackName || 'Untitled');
+  const title = opfDoc.querySelector('metadata title')?.textContent?.trim() || nameForFallback.replace(/\.epub$/i,'');
+  const author = opfDoc.querySelector('metadata creator')?.textContent?.trim() || 'Unknown author';
+
+  const manifestItems = {};
+  opfDoc.querySelectorAll('manifest item').forEach(item=>{
+    manifestItems[item.getAttribute('id')] = {
+      href: item.getAttribute('href'),
+      mediaType: item.getAttribute('media-type') || '',
+      properties: item.getAttribute('properties') || ''
+    };
+  });
+
+  const spineIds = Array.from(opfDoc.querySelectorAll('spine itemref')).map(i=>i.getAttribute('idref'));
+  const chapters = spineIds
+    .map(id=>manifestItems[id])
+    .filter(item=>item && /html|xml/i.test(item.mediaType))
+    .map(item=>resolvePath(opfPath, item.href));
+
+  const blobCache = {};
+  const coverUrl = await extractCover(zip, opfPath, opfDoc, manifestItems, chapters);
+
+  let toc = null;
+  try{ toc = await extractToc(zip, opfPath, manifestItems); }
+  catch(e){ console.error('TOC extraction failed', e); }
+
+  const key = sourceFile || nameForFallback;
+
+  return {
+    title, author, zip, opfPath, chapters, toc, coverUrl,
+    progress: 0, blobCache,
+    sourceFile: key,
+    chapterPageCounts: new Array(chapters.length).fill(null),
+    bookmark: getBookmark(key) || null,
+    id: 'b'+Math.random().toString(36).slice(2)
+  };
+}
+
+/* ---------- Loading books ---------- */
+
+async function loadFiles(fileList){
+  const files = Array.from(fileList).filter(f=>f.name.toLowerCase().endsWith('.epub'));
+  if(files.length === 0) return;
+  showLoading('Reading ' + (files.length>1 ? files.length+' books…' : files[0].name));
+  const failures = [];
+  for(const file of files){
+    try{
+      const book = await parseEpub(file, file.name, file.name);
+      library.push(book);
+    }catch(err){
+      console.error('Failed to parse', file.name, err);
+      failures.push(`${file.name} (${err.message})`);
+    }
+  }
+  hideLoading();
+  if(failures.length) showLibraryNotice(`<b>Some files failed to load:</b><br>${failures.join('<br>')}`);
+  renderLibrary();
+}
+
+async function loadFromBooksJson(){
+  const manifestUrl = new URL('Files/Books.json', document.baseURI).href;
+  let res;
+  try{
+    res = await fetch(manifestUrl, { cache: 'no-store' });
+  }catch(err){
+    showLibraryNotice(
+      `<b>Couldn't reach the Files folder.</b><br>Tried: <code>${manifestUrl}</code><br>` +
+      `This usually happens in an embedded preview where relative paths don't resolve, or the request was blocked. Try opening this page directly, or use "Add books" to load .epub files manually.`
+    );
+    return;
+  }
+  if(!res.ok){
+    showLibraryNotice(
+      `<b>No book list found.</b><br>Tried: <code>${manifestUrl}</code> (HTTP ${res.status}).<br>` +
+      `Make sure a <code>Files</code> folder sits next to this HTML file (same folder, exact case), containing <code>Books.json</code> — a JSON array like:<br>` +
+      `<code>[{"file":"book-one.epub"},{"file":"book-two.epub"}]</code><br>` +
+      `— and that the .epub filenames match exactly, including case (GitHub Pages is case-sensitive).`
+    );
+    return;
+  }
+
+  const rawText = await res.text();
+  let entries;
+  try{
+    const raw = JSON.parse(rawText);
+    if(!Array.isArray(raw)) throw new Error('Books.json must be a JSON array, e.g. [{"file":"book.epub"}]');
+    entries = raw.map(item => typeof item === 'string' ? { file: item } : item)
+                 .filter(item => item && item.file);
+  }catch(err){
+    showLibraryNotice(
+      `<b>Books.json isn't valid JSON:</b> ${escapeHtml(err.message)}<br>` +
+      `Common causes: a stray bracket, a trailing comma, or an unquoted key. ` +
+      `Paste it into a JSON validator (e.g. jsonlint.com) to find the exact spot.`
+    );
+    return;
+  }
+  if(entries.length === 0){
+    showLibraryNotice(`<b>Books.json was found but is empty.</b> Add at least one entry like <code>{"file":"book.epub"}</code>.`);
+    return;
+  }
+
+  showLoading('Loading your library…');
+  const failures = [];
+  for(const entry of entries){
+    const relPath = entry.file.includes('/') ? entry.file : `Files/${entry.file}`;
+    const encodedPath = relPath.split('/').map(encodeURIComponent).join('/');
+    const fetchUrl = new URL(encodedPath, document.baseURI).href;
+    try{
+      const r = await fetch(fetchUrl, { cache: 'no-store' });
+      if(!r.ok){ failures.push(`${entry.file} — HTTP ${r.status} at ${fetchUrl}`); continue; }
+      const blob = await r.blob();
+      const book = await parseEpub(blob, entry.file, entry.file);
+      if(!book.bookmark && entry.bookmark) book.bookmark = entry.bookmark;
+      library.push(book);
+    }catch(err){
+      failures.push(`${entry.file} — ${err.message}`);
+    }
+  }
+  hideLoading();
+  if(failures.length){
+    showLibraryNotice(`<b>Couldn't load ${failures.length} book${failures.length>1?'s':''} from Books.json:</b><br>${failures.map(escapeHtml).join('<br>')}`);
+  }
+  renderLibrary();
+}
+
+function reloadLibrary(){
+  el('lib-notice').style.display = 'none';
+  loadFromBooksJson();
+}
+
+/* ---------- Library UI ---------- */
+
+function renderLibrary(){
+  el('lib-count').textContent = library.length ? library.length + (library.length===1?' book':' books') : '';
+  el('empty-state').style.display = library.length ? 'none' : 'block';
+  grid.innerHTML = '';
+  library.forEach(book=>{
+    const card = document.createElement('div');
+    card.className = 'book-card';
+    const bm = book.bookmark;
+    card.innerHTML = `
+      <div class="cover">
+        ${book.coverUrl ? `<img src="${book.coverUrl}" alt="">` : `<div class="fallback">${escapeHtml(book.title)}</div>`}
+        ${book.progress > 0 ? `<div class="progress-pip"><i style="width:${Math.round(book.progress*100)}%"></i></div>` : ''}
+        ${bm ? `<div class="resume-badge">Resume · Page ${bm.page}</div>` : ''}
+      </div>
+      <div class="book-title">${escapeHtml(book.title)}</div>
+      <div class="book-author">${escapeHtml(book.author)}</div>
+    `;
+    card.addEventListener('click', ()=>openBook(book));
+    grid.appendChild(card);
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+async function openBook(book){
+  currentBook = book;
+  if(book.bookmark){
+    currentChapterIndex = book.bookmark.chapterIndex || 0;
+    currentPageInChapter = book.bookmark.pageIndexInChapter || 0;
+  }else{
+    currentChapterIndex = book.lastChapter || 0;
+    currentPageInChapter = 0;
+  }
+  libraryView.style.display = 'none';
+  readerView.classList.add('active');
+  el('back-btn').style.display = 'inline-block';
+  el('reader-title').textContent = book.title;
+  el('bookmark-btn').classList.remove('active');
+  await renderChapter();
+}
+
+/* ---------- Table of contents ---------- */
+
+function findSpineIndex(pathNoFrag){
+  if(!pathNoFrag || !currentBook) return -1;
+  const chapters = currentBook.chapters;
+  let idx = chapters.indexOf(pathNoFrag);
+  if(idx >= 0) return idx;
+  const decoded = decodeURIComponent(pathNoFrag);
+  idx = chapters.findIndex(p => p === decoded || decodeURIComponent(p) === decoded);
+  if(idx >= 0) return idx;
+  const base = pathNoFrag.split('/').pop();
+  idx = chapters.findIndex(p => p.split('/').pop() === base);
+  return idx;
+}
+
+function renderToc(){
+  const list = el('toc-list');
+  list.innerHTML = '';
+  let entries = currentBook.toc;
+  if(!entries || !entries.length){
+    entries = currentBook.chapters.map((p,i)=>({ title:`Chapter ${i+1}`, pathNoFrag:p, fragment:null, level:0 }));
+  }
+  entries.forEach(entry=>{
+    const idx = findSpineIndex(entry.pathNoFrag);
+    const item = document.createElement('div');
+    item.className = 'toc-item' + (idx === currentChapterIndex ? ' active' : '');
+    item.style.paddingLeft = (14 + entry.level*16) + 'px';
+    item.textContent = entry.title;
+    item.addEventListener('click', ()=>{
+      toggleToc(false);
+      if(idx >= 0){
+        currentChapterIndex = idx;
+        currentPageInChapter = 0;
+        renderChapter().then(()=>{
+          if(entry.fragment) scrollToFragmentOnCurrentPage(entry.fragment);
+        });
+      }
+    });
+    list.appendChild(item);
+  });
+}
+
+function toggleToc(open){
+  el('toc-panel').classList.toggle('open', open);
+  el('toc-overlay').classList.toggle('open', open);
+  if(open) renderToc();
+}
+
+function scrollToFragmentOnCurrentPage(fragment){
+  const target = document.getElementById(fragment);
+  if(!target) return;
+  const wrapWidth = el('page-wrap').clientWidth;
+  const targetPage = Math.floor(target.offsetLeft / wrapWidth);
+  goToPageInChapter(targetPage);
+}
+
+/* ---------- Chapter rendering + pagination ---------- */
+
+async function renderChapter(){
+  const book = currentBook;
+  const path = book.chapters[currentChapterIndex];
+  const pageEl = el('page');
+  pageEl.style.fontSize = fontSize + 'px';
+  if(!path){ pageEl.innerHTML = '<p>End of book.</p>'; chapterCssTag.textContent = ''; hideLoading(); return; }
+
+  showLoading('Turning the page…');
+  const chapFile = book.zip.file(path) || book.zip.file(decodeURIComponent(path));
+  if(!chapFile){ hideLoading(); pageEl.innerHTML = '<p>Could not load this chapter.</p>'; return; }
+
+  const text = await chapFile.async('text');
+  let doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
+  if(doc.querySelector('parsererror')) doc = new DOMParser().parseFromString(text, 'text/html');
+  const body = doc.querySelector('body');
+
+  try{
+    const css = await buildChapterCss(doc, path, book);
+    chapterCssTag.textContent = css ? `@scope (#page) {\n${css}\n}` : '';
+  }catch(e){
+    console.error('chapter css build failed', e);
+    chapterCssTag.textContent = '';
+  }
+
+  if(body){
+    const imgs = body.querySelectorAll('img, image');
+    for(const img of imgs){
+      const isSvgImage = img.tagName.toLowerCase() === 'image';
+      const attr = isSvgImage ? 'xlink:href' : 'src';
+      const src = img.getAttribute(attr) || img.getAttribute('href');
+      if(!src) continue;
+      const imgPath = resolvePath(path, src);
+      const url = await zipFileToBlobUrl(book, imgPath);
+      if(url){
+        if(isSvgImage) img.setAttribute('href', url);
+        else img.setAttribute('src', url);
+      }
+    }
+    body.querySelectorAll('a[href^="http://"], a[href^="https://"], a[href^="mailto:"]').forEach(a=>{
+      a.setAttribute('target','_blank');
+      a.setAttribute('rel','noopener');
+    });
+  }
+
+  pageEl.innerHTML = body ? body.innerHTML : text;
+  pageEl.style.transform = 'translateX(0)';
+
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  layoutPages();
+
+  hideLoading();
+
+  book.lastChapter = currentChapterIndex;
+  book.progress = (currentChapterIndex + (currentPageInChapter+1)/pagesInChapter) / book.chapters.length;
+  el('chapter-progress-fill').style.width = Math.round(book.progress * 100) + '%';
+  el('footer-label').textContent = `Chapter ${currentChapterIndex+1} of ${book.chapters.length}`;
+
+  el('bookmark-btn').classList.toggle('active',
+    !!(book.bookmark && book.bookmark.chapterIndex === currentChapterIndex && book.bookmark.pageIndexInChapter === currentPageInChapter));
+
+  if(el('toc-panel').classList.contains('open')) renderToc();
+}
+
+function layoutPages(){
+  const wrap = el('page-wrap');
+  const pageEl = el('page');
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+
+  pageEl.style.width = w + 'px';
+  pageEl.style.height = h + 'px';
+  pageEl.style.columnWidth = w + 'px';
+  pageEl.style.columnGap = '0px';
+
+  const totalWidth = pageEl.scrollWidth;
+  pagesInChapter = Math.max(1, Math.round(totalWidth / w));
+  currentBook.chapterPageCounts[currentChapterIndex] = pagesInChapter;
+
+  if(currentPageInChapter >= pagesInChapter) currentPageInChapter = pagesInChapter - 1;
+  if(currentPageInChapter < 0) currentPageInChapter = 0;
+
+  goToPageInChapter(currentPageInChapter, true);
+}
+
+function goToPageInChapter(pageIndex, skipUpdate){
+  const wrap = el('page-wrap');
+  const pageEl = el('page');
+  const w = wrap.clientWidth;
+  pageIndex = Math.max(0, Math.min(pagesInChapter - 1, pageIndex));
+  currentPageInChapter = pageIndex;
+  pageEl.style.transform = `translateX(${-pageIndex * w}px)`;
+  el('page-position').textContent = `Page ${pageIndex+1} of ${pagesInChapter}`;
+
+  if(!skipUpdate && currentBook){
+    currentBook.progress = (currentChapterIndex + (currentPageInChapter+1)/pagesInChapter) / currentBook.chapters.length;
+    el('chapter-progress-fill').style.width = Math.round(currentBook.progress * 100) + '%';
+    el('bookmark-btn').classList.toggle('active',
+      !!(currentBook.bookmark && currentBook.bookmark.chapterIndex === currentChapterIndex && currentBook.bookmark.pageIndexInChapter === currentPageInChapter));
+  }
+}
+
+async function goNextPage(){
+  if(currentPageInChapter < pagesInChapter - 1){
+    goToPageInChapter(currentPageInChapter + 1);
+  }else if(currentChapterIndex < currentBook.chapters.length - 1){
+    currentChapterIndex++;
+    currentPageInChapter = 0;
+    await renderChapter();
+  }
+}
+
+async function goPrevPage(){
+  if(currentPageInChapter > 0){
+    goToPageInChapter(currentPageInChapter - 1);
+  }else if(currentChapterIndex > 0){
+    currentChapterIndex--;
+    currentPageInChapter = 999999; // land on last page of previous chapter
+    await renderChapter();
+  }
+}
+
+function closeReader(){
+  readerView.classList.remove('active');
+  toggleToc(false);
+  libraryView.style.display = 'block';
+  el('back-btn').style.display = 'none';
+  renderLibrary();
+}
+
+/* ---------- internal link navigation ---------- */
+
+el('page').addEventListener('click', e=>{
+  const a = e.target.closest('a');
+  if(!a || !currentBook) return;
+  const href = a.getAttribute('href');
+  if(!href) return;
+  if(/^(https?:|mailto:|tel:)/i.test(href)) return;
+
+  e.preventDefault();
+  const [rawPath, fragment] = href.split('#');
+  const currentPath = currentBook.chapters[currentChapterIndex];
+  const resolved = rawPath ? resolvePath(currentPath, rawPath) : currentPath;
+  const idx = rawPath ? findSpineIndex(resolved) : currentChapterIndex;
+
+  if(idx === currentChapterIndex || (!rawPath && fragment)){
+    if(fragment) scrollToFragmentOnCurrentPage(fragment);
+    return;
+  }
+  if(idx >= 0){
+    currentChapterIndex = idx;
+    currentPageInChapter = 0;
+    renderChapter().then(()=>{
+      if(fragment) scrollToFragmentOnCurrentPage(fragment);
+    });
+  }
+});
+
+/* ---------- wiring ---------- */
+
+el('add-btn').addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>loadFiles(e.target.files));
+el('reload-btn').addEventListener('click', reloadLibrary);
+el('export-btn').addEventListener('click', exportBooksJson);
+el('import-btn').addEventListener('click', ()=>el('import-file-input').click());
+el('import-file-input').addEventListener('change', e=>{
+  if(e.target.files && e.target.files[0]) importBooksJson(e.target.files[0]);
+  e.target.value = '';
+});
+el('bookmark-btn').addEventListener('click', saveCurrentBookmark);
+
+['dragenter','dragover'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+});
+['dragleave','drop'].forEach(evt=>{
+  dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
+});
+dropzone.addEventListener('drop', e=>{
+  if(e.dataTransfer.files) loadFiles(e.dataTransfer.files);
+});
+
+el('back-btn').addEventListener('click', closeReader);
+el('reader-back').addEventListener('click', closeReader);
+el('toc-btn').addEventListener('click', ()=>toggleToc(true));
+el('toc-close').addEventListener('click', ()=>toggleToc(false));
+el('toc-overlay').addEventListener('click', ()=>toggleToc(false));
+
+el('tap-prev').addEventListener('click', goPrevPage);
+el('tap-next').addEventListener('click', goNextPage);
+el('prev-chapter').addEventListener('click', goPrevPage);
+el('next-chapter').addEventListener('click', goNextPage);
+
+el('chapter-progress').addEventListener('click', e=>{
+  const rect = e.currentTarget.getBoundingClientRect();
+  const ratio = (e.clientX - rect.left) / rect.width;
+  const idx = Math.min(currentBook.chapters.length-1, Math.max(0, Math.floor(ratio * currentBook.chapters.length)));
+  currentChapterIndex = idx;
+  currentPageInChapter = 0;
+  renderChapter();
+});
+
+el('font-inc').addEventListener('click', ()=>{
+  fontSize = Math.min(28, fontSize+1);
+  el('font-size-label').textContent = fontSize;
+  currentPageInChapter = 0;
+  renderChapter();
+});
+el('font-dec').addEventListener('click', ()=>{
+  fontSize = Math.max(13, fontSize-1);
+  el('font-size-label').textContent = fontSize;
+  currentPageInChapter = 0;
+  renderChapter();
+});
+
+let resizeTimer;
+window.addEventListener('resize', ()=>{
+  if(!readerView.classList.contains('active')) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(()=>layoutPages(), 150);
+});
+
+document.addEventListener('keydown', e=>{
+  if(!readerView.classList.contains('active')) return;
+  if(el('toc-panel').classList.contains('open') && e.key === 'Escape'){ toggleToc(false); return; }
+  if(e.key === 'ArrowRight') goNextPage();
+  if(e.key === 'ArrowLeft') goPrevPage();
+  if(e.key === 'Escape') closeReader();
+});
+
+renderLibrary();
+loadFromBooksJson();
+</script>
+</body>
+</html>
